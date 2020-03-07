@@ -1,14 +1,25 @@
+# Modification of Gale-Shapley algorithm to match dancers into pieces 
+# based on mutual preferences
+# Run: python audition_program.py <choreo-rankings.cvs> <dancer-rankings.csv> <sign-in.csv>
+# Ensure there's a directory "piece_assignments" to put assignments in
+# TO-DO: Clean up style (documentation, inputs/return types, variable names (camelCase))
+# TO-DO: Add README with file formats (+ trouble-shooting: make sure no commas in .csv files)
+
 import argparse, csv
 
-printOUT_PATH = 'test_piece_assignments/'
+printOUT_PATH = 'piece_assignments/'
 parser = argparse.ArgumentParser()
 parser.add_argument('choreographer_prefs') #path to the choreographers' rankings file (.csv)
 parser.add_argument('dancer_prefs') #path to the dancers' rankings file (.csv)
 parser.add_argument('sign_in') #path to sign in sheet (.csv)
 args = parser.parse_args()
 
+# Piece rankings: list of tuples (piece ID, dancer's ranking), sorted by dancer's ranking
+# Pieces: set of pieces dancer is in with capacity num_pieces
 class Dancer(object):
-	def __init__(self, first_name, last_name, audition_number, gender, num_pieces, piece_rankings, email, phone):
+	def __init__(self, first_name, last_name, audition_number, 
+				gender, num_pieces, piece_rankings, email, phone):
+
 		self.first_name = first_name
 		self.last_name = last_name
 		self.audition_number = audition_number
@@ -20,16 +31,24 @@ class Dancer(object):
 		self.pieces = {}
 
 	def __repr__(self):
-		return "%d %s %s %s %s %s" % (self.audition_number, ";", self.first_name, self.last_name, ";", self.email)
+		return "%d %s %s %s %s %s" % (self.audition_number, ";", 
+			self.first_name, self.last_name, ";", self.email)
 
+# Gender constraint: if non-empty, dict with key: 'M'/'F' with val: int to indicate gender
+# constraint, else: no constraint preferred
+# Dancer rankings: dict of choreorapher's dancer preferences, key: dancer ID, val: 
+# choreographer's dancer preference (rank)
+# Dancers: set of dancers currently in piece
+# Alternates: set of dancers who may later join the piece (in the case of gender constraints)
 class Piece(object):
-	def __init__(self, piece_id, choreographer_name, capacity, gender_constraint, dancer_rankings):
+	def __init__(self, piece_id, choreographer_name, 
+				capacity, gender_constraint, dancer_rankings):
+
 		self.piece_id = piece_id
 		self.choreographer_name = choreographer_name
 		self.capacity = capacity
 		self.gender_constraint = gender_constraint
 		self.dancer_rankings = dancer_rankings
-		# key is dancer id, value is rank 
 		self.dancers = {}
 		self.alternates = {}
 
@@ -46,7 +65,7 @@ def csvToPieces(choreographerPrefFile):
 		if i == 0: continue
 
 		column = line.strip().split(',')
-		piece_id = int(column[choreoPrefsHeaders.index('id')])
+		piece_id = (column[choreoPrefsHeaders.index('id')])
 		name = column[choreoPrefsHeaders.index('name')]
 		total = int(column[choreoPrefsHeaders.index('total')])
 		num_males = int(column[choreoPrefsHeaders.index('num_males')])
@@ -75,7 +94,9 @@ def csvToPieces(choreographerPrefFile):
 #turns CSV into map of dancers (key: audition num, val: Dancer object)
 def csvToDancers(dancerPrefsFile, signInFile):
 	dancerInfo = open(signInFile, 'r')
-	dancerInfoHeaders = ['time', 'audition_number', 'last_name', 'first_name', 'class', 'email', 'num_semesters', 'phone']
+	dancerInfoHeaders = ['time', 'audition_number', 
+				'last_name', 'first_name', 'class', 
+				'email', 'num_semesters', 'phone']
 	contactMap = {}
 
 	for i,line in enumerate(dancerInfo):
@@ -90,7 +111,8 @@ def csvToDancers(dancerPrefsFile, signInFile):
 	dancerInfo.close()
 
 	dancerRankings = open(dancerPrefsFile, 'r')
-	dancerRankingsHeaders = ['time', 'first_name', 'last_name', 'audition_number', 'gender', 'num_pieces']
+	dancerRankingsHeaders = ['time', 'first_name', 'last_name', 
+							'audition_number', 'gender', 'num_pieces']
 	dancerMap = {}
 
 	for i,line in enumerate(dancerRankings):
@@ -104,13 +126,17 @@ def csvToDancers(dancerPrefsFile, signInFile):
 		num_pieces = int(column[dancerRankingsHeaders.index('num_pieces')])
 
 		preferences = column[len(dancerRankingsHeaders):-1]
-		ranking_tuples = [(piece, int(ranking)) for piece,ranking in enumerate(preferences) if ranking != ""]
+		ranking_tuples = [(piece, int(ranking)) 
+			for piece,ranking in enumerate(preferences) if ranking != ""]
 		sorted_rankings = sorted(ranking_tuples, key=lambda tup: tup[1])
-		piece_rankings = [(dance_index+1, ranking) for (dance_index, ranking) in sorted_rankings]
+		piece_rankings = [(str(dance_index+1), ranking) 
+			for (dance_index, ranking) in sorted_rankings]
 
 		(email, phone) = contactMap.get(audition_number, ('no email', 'no phone'))
 
-		dancerMap[audition_number] = Dancer(first_name, last_name, audition_number, gender, num_pieces, piece_rankings, email, phone)
+		dancerMap[audition_number] = Dancer(first_name, last_name, 
+									audition_number, gender, num_pieces, 
+									piece_rankings, email, phone)
 	dancerRankings.close()
 
 	return dancerMap
@@ -124,6 +150,7 @@ def checkIfPieceRankedDancer(piece, dancer):
 	return False
 
 # return dancer's least fave piece (worstID, worstRank)
+# note: (piece, rank) = (x, int)
 def findWorstPiece(dancer):
 	worstRank = 0
 	worstID = None
@@ -131,34 +158,43 @@ def findWorstPiece(dancer):
 	for (piece, rank) in dancer.piece_rankings:
 		if piece in dancer.pieces and rank > worstRank:
 			worstID, worstRank = piece, rank
+		if (piece + "M") in dancer.pieces and rank > worstRank:
+			worstID, worstRank = (piece + "M"), rank
+		if (piece + "F") in dancer.pieces and rank > worstRank:
+			worstID, worstRank = (piece + "F"), rank
+	
 	return (worstID, worstRank)
 
 # check if a dancer wants to add this piece to their pieces 
-# return: (False, None, None) if we can't add
-# (True, rank, None) where rank is rank of added piece & None if dancer wasn't removed from a piece
-# (True, rank, removedPiece) where rank is added piece rank & removedPiece is piece ID of the piece dancer left
+# return: (False, None, None) if we can't add (dancer rejects proposal)
+# (True, rank, None): rank = rank of added piece or None if dancer wasn't removed from a piece
+# (True, rank, removedPiece): rank = rank of added piece, 
+# and removedPiece = piece ID of the piece dancer left
 def checkCanAddDancerToPiece(piece, dancer):
-	"""print dancer.first_name + " " + dancer.last_name + ": "
-	print str(dancer.pieces) + ", len: " + str(len(dancer.pieces))
-	print dancer.num_pieces"""
 	# possible piece: (piece, rank)
 	# gets rank of current piece in dancer's rankings
-	pieceRank = -1
+	pieceRank = 1000
+	actual_piece = piece.piece_id
+	if 'F' in actual_piece or 'M' in actual_piece:
+		actual_piece = actual_piece[:-1]
+
 	for possiblePiece in dancer.piece_rankings:
-		if possiblePiece[0] == piece.piece_id:
+		if possiblePiece[0] == actual_piece:
 			pieceRank = possiblePiece[1]
 			break
 
+	if pieceRank == 1000:
+		return (False, None, None)
+
 	# check if dancer has room to add
 	if len(dancer.pieces) < dancer.num_pieces:
-		#print "a"
 		return (True, pieceRank, None)
 
+	# dancer is at max number of pieces, checks if they want to drop a piece
 	else:
-		#print "b"
 		(worstID, worstRank) = findWorstPiece(dancer)
-		#print "(worstID, worstRank): " + str((worstID, worstRank))
 		if worstRank > pieceRank:
+			# curr piece is higher priority, dancer wants to drop their worst piece
 			return (True, pieceRank, worstID)
 
 	# dancer doesn't want to add piece (rank not high enough)
@@ -170,6 +206,10 @@ def findDancer(piece):
 	for key in piece.dancer_rankings:
 		dancers.append((key,piece.dancer_rankings[key]))
 	sortedDancers = sorted(dancers, key = lambda x:x[1])
+
+	if sortedDancers == []:
+		return None
+
 	dancer_id = sortedDancers[0][0]
 
 	return dancer_id
@@ -191,12 +231,12 @@ def checkAllProposed(pieces):
 def writePieces(pieces):
 	for pieceID in pieces:
 		piece = pieces[pieceID]
-		pieceFile = open(printOUT_PATH + '%s - %s.txt' % (piece.piece_id, piece.choreographer_name.replace('/', '_')), 'w')
+		pieceFile = open(printOUT_PATH + '%s - %s.txt' % (piece.piece_id, 
+							piece.choreographer_name.replace('/', '_')), 'w')
 		pieceFile.write('********************\n')
 		pieceFile.write('%s (%s) \n' % (piece.choreographer_name, piece.piece_id))
 
 		pieceFile.write('********************\n')
-		#sortedDancers = sorted(piece.dancers, key=lambda d: d.id)
 		dancers = []
 		for dancerID in piece.dancers:
 			dancers.append(dancerID)
@@ -208,8 +248,9 @@ def writePieces(pieces):
 		pieceFile.close()
 	return
 
+# writes list of dancers who were successfully assigned into piece(s) to .csv file
 def makeAssigned(pieces):
-	assignedFile = open(printOUT_PATH + "assigned.txt", 'w')
+	assignedFile = open(printOUT_PATH + "assigned.csv", 'w')
 	for pieceID in pieces:
 		piece = pieces[pieceID]
 		assignedFile.write(str(piece) + '\n')
@@ -224,8 +265,9 @@ def makeAssigned(pieces):
 	assignedFile.close()
 	return
 
+# outputs list of dancers not assigned to a piece to .csv file
 def makeUnassigned(dancers):
-	unassignedFile = open(printOUT_PATH + 'unassigned.txt', 'w')
+	unassignedFile = open(printOUT_PATH + 'unassigned.csv', 'w')
 	for dancerID in dancers:
 		dancer = dancers[dancerID]
 		if len(dancer.pieces) == 0:
@@ -238,7 +280,6 @@ def makeUnassigned(dancers):
 	unassignedFile.close()
 	return
 
-
 def main():
 	pieces = csvToPieces(args.choreographer_prefs)
 	dancers = csvToDancers(args.dancer_prefs, args.sign_in)
@@ -246,79 +287,45 @@ def main():
 	while (not checkAllProposed(pieces)):
 		for pieceID in pieces:
 			piece = pieces[pieceID]
-			while len(piece.dancers) < piece.capacity:
+			while len(piece.dancers) < piece.capacity and len(piece.dancer_rankings) != 0:
 				# propose to dancer
 				dancerID = findDancer(piece)
-				#print dancerID
-				dancer = dancers[dancerID]
+				
+				if dancerID != None:
 
-				# check if dancer accepts proposal
-				(res, pieceRank, removedID) = checkCanAddDancerToPiece(piece, dancer)
+					#print dancerID
+					dancer = dancers[dancerID]
 
-				if res:
-					# dancer can be added to current piece
-					# add dancer to accepted piece
-					#print dancer.first_name + " " + dancer.last_name + " is joining " + piece.choreographer_name
-					#print str(dancer.num_pieces) + ", " + str(len(dancer.pieces))
-					piece.dancers[dancerID] = dancer
+					# check if dancer accepts proposal
+					(res, pieceRank, removedID) = checkCanAddDancerToPiece(piece, dancer)
 
-					if removedID == None:
-						# dancer isn't leaving a piece, add piece to dancer's list
-						dancer.pieces[piece.piece_id] = pieceRank
+					if res:
+						# dancer can be added to current piece
+						# add dancer to accepted piece
+						piece.dancers[dancerID] = dancer
 
-					else:
-						# dancer leaving removedID piece
-						leavingPiece = pieces[removedID]
+						if removedID == None:
+							# dancer isn't leaving a piece, add piece to dancer's list
+							dancer.pieces[piece.piece_id] = pieceRank
 
-						# remove rejected piece from dancer's list
-						dancer.pieces.pop(removedID)
+						else:
+							# dancer leaving removedID piece
+							leavingPiece = pieces[removedID]
 
-						# add accepted piece to dancer's list
-						dancer.pieces[piece.piece_id] = pieceRank
+							# remove rejected piece from dancer's list
+							dancer.pieces.pop(removedID)
 
-						# remove dancer from rejected piece
-						leavingPiece.dancers.pop(dancerID)
-						#print dancer.first_name + " " + dancer.last_name + " is leaving " + leavingPiece.choreographer_name
+							# add accepted piece to dancer's list
+							dancer.pieces[piece.piece_id] = pieceRank
 
-						# rejected piece has to propose????
+							# remove dancer from rejected piece
+							leavingPiece.dancers.pop(dancerID)
 
-
-					"""
-					# check if dancer is at capacity, in which case they will 
-					# leave a dance 
-					if len(dancer.pieces) < dancer.capacity:
-						dancer.pieces[piece.piece_id] = pieceRank
-					else:
-						# dancer has to leave a piece
-						worstID, worstPiece = findWorstPiece(dancer)
-						leaveFromPiece(pieces[worstID],dancer)
-						#todo: actually write this function LOL"""
-
-				"""else: 
-					# put dancer on alternates
-					piece.alternates[dancerID] = piece.dancer_rankings[dancerID]""" 
-
-				# remove curr dancer from proposal list
-				piece.dancer_rankings.pop(dancerID)
+					# remove curr dancer from proposal list
+					piece.dancer_rankings.pop(dancerID)
 
 	writePieces(pieces)
 	makeAssigned(pieces)
 	makeUnassigned(dancers)
 
 main()
-
-def test():
-	pieces = csvToPieces(args.choreographer_prefs)
-	dancers = csvToDancers(args.dancer_prefs, args.sign_in)
-
-	print dancers[3]
-	print "Dancer piece rankings (piece, rank): " + str(dancers[3].piece_rankings)
-	print "Pieces dancer rankings (dancer #: rank): " + str(pieces[1].dancer_rankings)
-
-	if not checkIfPieceRankedDancer(pieces[1], dancers[3]):
-		print "good"
-	if checkIfPieceRankedDancer(pieces[3], dancers[3]):
-		print "yes"
-
-#test()
-
